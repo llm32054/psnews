@@ -1,9 +1,8 @@
-搜狐新闻爬虫(Java版)
+河南省公安厅新闻爬虫(Java版)
 =================
 
-2017.5.2
+2019.11.14
 ------------
-
 采用知乎上某位大牛的框架进行改写<br>
 没有使用任何其他框架<br>
 可以实现海量数据新闻去重，多线程<br>
@@ -18,3 +17,7 @@
 	SohuSpider.miniSpider ip代理采集爬虫<br>
 	SohuSpider.service 爬虫主体部分<br>
 	SohuSpider.util   一些json解析，请求网页等工具类<br>
+	
+	
+	
+本程序改编自 https://github.com/JetFeng/SohuSpider-Java.git

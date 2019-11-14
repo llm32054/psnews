@@ -1,30 +1,26 @@
 package main.java.SohuSpider.service;
 
-import java.util.List;
-import java.util.ArrayList;
+import static main.java.SohuSpider.util.JSoupUtils.getDocument;
+import static main.java.SohuSpider.util.XmlUtils.writeEntryUrls;
+
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
-import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.Date;
 
-import org.json.JSONException;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
@@ -32,18 +28,17 @@ import org.jsoup.select.Elements;
 import main.java.SohuSpider.bean.NewsBean;
 import main.java.SohuSpider.filter.BloomFilter;
 import main.java.SohuSpider.util.DBStatement;
-import static main.java.SohuSpider.util.XmlUtils.getAllChannels;
-import static main.java.SohuSpider.util.JSoupUtils.getDocument;
-import static main.java.SohuSpider.util.JsonUtils.parseRestContent;
-import static main.java.SohuSpider.util.XmlUtils.writeEntryUrls;
-import static main.java.SohuSpider.util.XmlUtils.loadEntryUrls;
+import main.java.SohuSpider.util.FileUtils;
 
 public class SpiderService implements Serializable {
+	
+	// 文件命名
+	public static volatile int num = 1;
 	
 	//使用BloomFilter算法去重
 	static BloomFilter filter = new BloomFilter();
 	
-	 //url阻塞队列
+	//url阻塞队列
 	BlockingQueue<String> urlQueue = null;
 	
 	//数据库连接
@@ -56,10 +51,13 @@ public class SpiderService implements Serializable {
 	//线程池
 	static Executor executor = Executors.newFixedThreadPool(20);
 	
-	static String urlHost = "http://m.sohu.com";
+	//static String urlHost = "http://m.sohu.com";
+	static String urlHost = "http://www.henanga.gov.cn";
 	
 	//导航页面url
-	static String urlNavigation = "https://m.sohu.com/c/395/?_once_=000025_zhitongche_daohang_v3";
+	//static String urlNavigation = "https://m.sohu.com/c/395/?_once_=000025_zhitongche_daohang_v3";
+	static String urlNavigation = "http://www.henanga.gov.cn/jwzx/jwyw/index.html";
+	
 	
 	//爬取深度
 	static int DEFAULT_DEPTH = 10;
@@ -87,6 +85,12 @@ public class SpiderService implements Serializable {
 			
 			//获取入口Url
 			List<String> urlChannels = genEntryChannel(urlNavigation);
+			// 遍历所有页码
+			for(int i = 2; i <= 47; i++) {
+				String url = "http://www.henanga.gov.cn/jwzx/jwyw/index_"+ i + ".html";
+				List<String> list = genEntryChannel(url);
+				urlChannels.addAll(list);
+			}
 			
 			for (String url : urlChannels) {
 				urlQueue.add(url);
@@ -187,10 +191,12 @@ public class SpiderService implements Serializable {
 		
 		List<String> urlArray = new ArrayList<String>();
 		//小说类别的url不需要，其url特征是含有单词read
-		String pattern = "^/c.*";
+		//String pattern = "^/c.*";
+		String pattern = "^/jwzx/jwyw/201.*";
 		
 		Document doc = getDocument(startUrl);
-		Elements Urls = doc.select("a.h3Sub");
+		//Elements Urls = doc.select("a.h3Sub");
+		Elements Urls = doc.select("li a");
 		for (Element url : Urls) {
 			String link = url.attr("href");
 			if (Pattern.matches(pattern, link) == true) {
@@ -204,11 +210,11 @@ public class SpiderService implements Serializable {
 
 	
 	/* 爬取新闻网页 */
-	public void crawler(String url) {
+	public synchronized void crawler(String url) {
 		
 		Document doc = getDocument(url); //返回的Document对象一定是正确的
 		
-		String pattern = ".*/n/[0-9]+/.*";
+		String pattern = ".*/jwzx/jwyw/.*";
 		//System.out.println(Pattern.matches(pattern, url));
 		if (Pattern.matches(pattern, url)){
 			
@@ -223,11 +229,11 @@ public class SpiderService implements Serializable {
 			
 			news.setUrl(url);
 			
-			try{
-				/**
+			/*try{
+				*//**
 				 * 新闻标题格式 题目-类别-手机搜狐
 				 * 但是有些题目中本身就含有 "-" 
-				 */
+				 *//*
 				String[] temp = doc.title().trim().split("-");
 				category = temp[temp.length - 2].substring(0, 2);
 				for (int i = 0; i < temp.length - 2; i++){
@@ -236,12 +242,34 @@ public class SpiderService implements Serializable {
 			} catch (ArrayIndexOutOfBoundsException e) {
 				//e.printStackTrace();
 				return ; 
+			}*/
+			title = doc.title();
+			Elements Contents = null;
+			Contents = doc.body().select(".news_content div span span");
+			String cont = "";
+			if(Contents.isEmpty() == false) {
+				for (Element con : Contents) {
+					cont = cont + con.text() + "\r\n";
+				}
+				
+			}else {
+				Contents = doc.body().select(".news_content");
+				if(Contents.isEmpty() == false) {
+					cont = Contents.get(0).text();
+				}else {
+					Contents = doc.body().select("p span font");
+					for (Element con : Contents) {
+						cont = cont + con.text() + "\r\n";
+					}
+				}
+				
 			}
+			news.setContent(cont);
 			
 			news.setCategory(category);
 			news.setTitle(title);
 			
-			Elements articleInfo = doc.body().select("div.article-info");
+			/*Elements articleInfo = doc.body().select("div.article-info");
 			if ( articleInfo.isEmpty() == false) {
 				try{
 					String[] temp = articleInfo.first().text().split(" ");
@@ -274,12 +302,16 @@ public class SpiderService implements Serializable {
 			if (divEditor.isEmpty() == false) {
 				editor = divEditor.first().text();
 			}
-			news.setEditor(editor);
+			news.setEditor(editor);*/
 			
 			//打印用户信息
 	        System.out.println("爬取成功：" + news);
+	        FileUtils.Write("E:\\psnews\\" + (num) + ".txt",news.getUrl() + "\r\n");
+	        FileUtils.Write("E:\\psnews\\" + (num) + ".txt",news.getTitle() + "\r\n");
+	        FileUtils.Write("E:\\psnews\\" + (num++) + ".txt",news.getContent() + "\r\n");
+	        
 	
-	        String sql = "insert into news_info " +
+	        /*String sql = "insert into news_info " +
 	                "(title,url,cate,date,srcFrom,content,editor) " +
 	                "values (?,?,?,?,?,?,?)";
 	        try {
@@ -295,7 +327,7 @@ public class SpiderService implements Serializable {
 	            ps.executeUpdate();
 	        }catch (Exception e){
 	            e.printStackTrace();
-	        }
+	        }*/
 		}
 		
 		//新闻正文url的特征  https://m.sohu.com/n/488483157/
